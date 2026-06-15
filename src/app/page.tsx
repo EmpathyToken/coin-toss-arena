@@ -24,6 +24,15 @@ type Room = {
   joinerChoice?: Side;
   creatorAssigned?: Side;
   joinerAssigned?: Side;
+  creatorDepositSig?: string;
+  joinerDepositSig?: string;
+  creatorDeposited?: boolean;
+  joinerDeposited?: boolean;
+  creatorRefunded?: boolean;
+  joinerRefunded?: boolean;
+  escrowReady?: boolean;
+  payoutStatus?: string;
+  expiresAt?: string;
   winner?: string;
   result?: Side;
 };
