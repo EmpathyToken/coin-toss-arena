@@ -1,0 +1,227 @@
+import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
+
+type Side = "HEADS" | "TAILS";
+
+type Player = {
+  playerId: string;
+  name: string;
+  wins: number;
+  losses: number;
+  currentStreak: number;
+  bestStreak: number;
+  totalWon: number;
+};
+
+type Room = {
+  id: string;
+  wager: number;
+  status: "waiting" | "picking" | "ready" | "finished";
+  creator: string;
+  joiner?: string;
+  creatorChoice?: Side;
+  joinerChoice?: Side;
+  creatorAssigned?: Side;
+  joinerAssigned?: Side;
+  winner?: string;
+  result?: Side;
+};
+
+type DB = {
+  players: Player[];
+  rooms: Room[];
+  messages: any[];
+  matches: any[];
+};
+
+const dbPath = path.join(process.cwd(), "data", "db.json");
+
+function readDB(): DB {
+  if (!fs.existsSync(dbPath)) {
+    fs.writeFileSync(dbPath, JSON.stringify({ players: [], rooms: [], messages: [], matches: [] }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(dbPath, "utf8"));
+}
+
+function writeDB(db: DB) {
+  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+}
+
+function assignSides(room: Room) {
+  if (!room.creatorChoice || !room.joinerChoice) return;
+
+  if (room.creatorChoice !== room.joinerChoice) {
+    room.creatorAssigned = room.creatorChoice;
+    room.joinerAssigned = room.joinerChoice;
+  } else {
+    const creatorGetsHeads = Math.random() < 0.5;
+    room.creatorAssigned = creatorGetsHeads ? "HEADS" : "TAILS";
+    room.joinerAssigned = creatorGetsHeads ? "TAILS" : "HEADS";
+  }
+
+  room.status = "ready";
+}
+
+function getPlayer(db: DB, name: string) {
+  let player = db.players.find((p) => p.name === name);
+
+  if (!player && name && name !== "Guest") {
+    player = {
+      playerId: `auto-${name}`,
+      name,
+      wins: 0,
+      losses: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      totalWon: 0
+    };
+    db.players.push(player);
+  }
+
+  return player;
+}
+
+export async function GET() {
+  const db = readDB();
+
+  const leaderboard = [...db.players]
+    .sort((a, b) => b.totalWon - a.totalWon)
+    .slice(0, 20);
+
+  return NextResponse.json({
+    ...db,
+    leaderboard
+  });
+}
+
+export async function POST(req: Request) {
+  const db = readDB();
+  const body = await req.json();
+
+  if (body.type === "nickname") {
+    const name = String(body.name || "").trim();
+    const playerId = String(body.playerId || "").trim();
+
+    if (!playerId) return NextResponse.json({ ok: false, error: "Missing player ID" });
+    if (name.length < 3) return NextResponse.json({ ok: false, error: "Nickname must be 3+ characters" });
+
+    const taken = db.players.find(
+      (p) => p.name.toLowerCase() === name.toLowerCase() && p.playerId !== playerId
+    );
+
+    if (taken) return NextResponse.json({ ok: false, error: "Nickname already taken" });
+
+    let player = db.players.find((p) => p.playerId === playerId);
+
+    if (player) {
+      player.name = name;
+    } else {
+      db.players.push({
+        playerId,
+        name,
+        wins: 0,
+        losses: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        totalWon: 0
+      });
+    }
+
+    writeDB(db);
+    return NextResponse.json({ ok: true, name, ...db });
+  }
+
+  if (body.type === "room") {
+    const room: Room = {
+      id: `room-${Date.now()}`,
+      wager: Number(body.wager),
+      status: "waiting",
+      creator: body.creator || "Guest"
+    };
+
+    db.rooms.unshift(room);
+    writeDB(db);
+    return NextResponse.json({ ...db, activeRoom: room });
+  }
+
+  if (body.type === "join") {
+    const room = db.rooms.find((r) => r.id === body.roomId);
+    if (room && !room.joiner) {
+      room.joiner = body.joiner || "Guest";
+      room.status = "picking";
+    }
+
+    writeDB(db);
+    return NextResponse.json(db);
+  }
+
+  if (body.type === "choose") {
+    const room = db.rooms.find((r) => r.id === body.roomId);
+
+    if (room) {
+      if (body.player === "creator") room.creatorChoice = body.choice;
+      if (body.player === "joiner") room.joinerChoice = body.choice;
+      assignSides(room);
+    }
+
+    writeDB(db);
+    return NextResponse.json(db);
+  }
+
+  if (body.type === "flip") {
+    const room = db.rooms.find((r) => r.id === body.roomId);
+
+    if (room && room.status === "ready") {
+      const result: Side = Math.random() < 0.5 ? "HEADS" : "TAILS";
+      room.result = result;
+      room.winner = room.creatorAssigned === result ? room.creator : room.joiner || "Joiner";
+      room.status = "finished";
+
+      const loser = room.winner === room.creator ? room.joiner : room.creator;
+      const prize = room.wager * 2;
+
+      const winnerProfile = getPlayer(db, room.winner);
+      if (winnerProfile) {
+        winnerProfile.wins += 1;
+        winnerProfile.currentStreak += 1;
+        winnerProfile.bestStreak = Math.max(winnerProfile.bestStreak, winnerProfile.currentStreak);
+        winnerProfile.totalWon += prize;
+      }
+
+      if (loser) {
+        const loserProfile = getPlayer(db, loser);
+        if (loserProfile) {
+          loserProfile.losses += 1;
+          loserProfile.currentStreak = 0;
+        }
+      }
+
+      db.matches.unshift({
+        id: `match-${Date.now()}`,
+        winner: room.winner,
+        loser,
+        prize,
+        result,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    writeDB(db);
+    return NextResponse.json(db);
+  }
+
+  if (body.type === "chat") {
+    db.messages.push({
+      id: Date.now(),
+      wallet: body.wallet || "Guest",
+      message: body.message || "",
+      createdAt: new Date().toISOString()
+    });
+
+    writeDB(db);
+    return NextResponse.json(db);
+  }
+
+  return NextResponse.json(db);
+}

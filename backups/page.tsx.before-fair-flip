@@ -1,0 +1,604 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const WalletMultiButton = dynamic(
+  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
+
+type Tab = "match" | "tournaments" | "leaderboard" | "matchmaking";
+type Side = "HEADS" | "TAILS";
+
+type Room = {
+  id: string;
+  wager: number;
+  status: "waiting" | "picking" | "ready" | "finished";
+  creator: string;
+  joiner?: string;
+  creatorChoice?: Side;
+  joinerChoice?: Side;
+  creatorAssigned?: Side;
+  joinerAssigned?: Side;
+  winner?: string;
+  result?: Side;
+};
+
+export default function Home() {
+  const { publicKey, connected } = useWallet();
+  const [nickname, setNickname] = useState("");
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [nicknameError, setNicknameError] = useState("");
+
+
+  const [tab, setTab] = useState<Tab>("match");
+  const [bet, setBet] = useState(1000);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [activeRoomId, setActiveRoomId] = useState("");
+  const [chatOpen, setChatOpen] = useState(true);
+  const [chatInput, setChatInput] = useState("");
+  const [messages, setMessages] = useState<string[]>([]);
+  const [flipping, setFlipping] = useState(false);
+  const [countdown, setCountdown] = useState("");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("toss_nickname");
+    if (saved) {
+      setNickname(saved);
+      setShowNameModal(false);
+    } else {
+      setShowNameModal(true);
+    }
+  }, []);
+
+  const me = nickname || (connected && publicKey
+    ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
+    : "Guest");
+
+  const activeRoom = rooms.find((r) => r.id === activeRoomId);
+
+  async function loadState() {
+    const res = await fetch("/api/state", { cache: "no-store" });
+    const data = await res.json();
+    setRooms(data.rooms || []);
+    setPlayers(data.players || []);
+    setMessages((data.messages || []).map((m: any) => `${m.wallet}: ${m.message}`));
+  }
+
+  useEffect(() => {
+    loadState();
+    const timer = setInterval(loadState, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  async function post(body: any) {
+    const res = await fetch("/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    setRooms(data.rooms || []);
+    setPlayers(data.players || []);
+    return data;
+  }
+
+  async function createRoom() {
+    const data = await post({ type: "room", wager: bet, creator: me });
+    if (data.activeRoom?.id) setActiveRoomId(data.activeRoom.id);
+  }
+
+  async function joinRoom(roomId: string) {
+    setActiveRoomId(roomId);
+    await post({ type: "join", roomId, joiner: me });
+  }
+
+  async function choose(choice: Side) {
+    if (!activeRoom) return;
+    const player = activeRoom.creator === me ? "creator" : "joiner";
+    await post({ type: "choose", roomId: activeRoom.id, player, choice });
+  }
+
+  async function flipRoom() {
+    if (!activeRoom) return;
+    setCountdown("3");
+    setTimeout(() => setCountdown("2"), 500);
+    setTimeout(() => setCountdown("1"), 1000);
+    setTimeout(() => {
+      setCountdown("FLIP!");
+      setFlipping(true);
+    }, 1500);
+
+    setTimeout(async () => {
+      await post({ type: "flip", roomId: activeRoom.id });
+      setFlipping(false);
+      setCountdown("");
+    }, 1000);
+  }
+
+  async function sendChat(e: React.FormEvent) {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    await post({ type: "chat", wallet: me, message: chatInput.trim() });
+    setChatInput("");
+  }
+
+  function getStats(name?: string) {
+    const p = players.find((x:any) => x.name === name);
+    const wins = p?.wins || 0;
+    const losses = p?.losses || 0;
+    const total = wins + losses;
+    return {
+      wins,
+      losses,
+      streak: p?.currentStreak || 0,
+      bestStreak: p?.bestStreak || 0,
+      totalWon: p?.totalWon || 0,
+      winRate: total ? Math.round((wins / total) * 100) : 0
+    };
+  }
+
+  return (
+    <>
+      {showNameModal && (
+        <NicknameModal
+          onDone={(name) => {
+            localStorage.setItem("toss_nickname", name);
+            setNickname(name);
+            setShowNameModal(false);
+          }}
+        />
+      )}
+
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#073025,#020403_55%)] text-white">
+      <div className="mx-auto max-w-[1180px] px-6 py-6">
+        <header className="mb-6 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-4 shadow-2xl backdrop-blur">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight">
+              TOKEN <span className="text-emerald-400">TOSS</span>
+            </h1>
+            <p className="text-sm text-zinc-400">
+              {connected && publicKey ? `Wallet: ${me}` : "Connect wallet • create room • battle"}
+            </p>
+          </div>
+
+          <div className="wallet-button-wrap">
+            <WalletMultiButton />
+          </div>
+        </header>
+
+        <section className="mb-6 grid gap-4 md:grid-cols-4">
+          <Stat title="ONLINE" value="127" sub="players active" />
+          <Stat title="LIVE ROOMS" value={rooms.length.toString()} sub="waiting / active" />
+          <Stat title="JACKPOT" value="284K" sub="TOSS pool" />
+          <Stat title="MODE" value="DEV" sub="prototype" />
+        </section>
+
+        <nav className="mb-6 flex gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
+          {[
+            ["match", "1V1 MATCH"],
+            ["tournaments", "TOURNAMENTS"],
+            ["leaderboard", "LEADERBOARD"],
+            ["matchmaking", "MATCHMAKING"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id as Tab)}
+              className={`rounded-xl px-5 py-3 font-black ${
+                tab === id
+                  ? "bg-emerald-400 text-black"
+                  : "border border-white/10 bg-white/[0.045] text-zinc-300 hover:bg-white/10"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {tab === "match" && !activeRoom && (
+          <section className="grid gap-6 lg:grid-cols-[320px_1fr_320px]">
+            <Panel title="CREATE ROOM">
+              <label className="text-sm text-zinc-300">Your Bet</label>
+              <input
+                value={bet}
+                onChange={(e) => setBet(Number(e.target.value || 0))}
+                className="mt-3 w-full rounded-2xl border border-white/10 bg-black/70 p-4 text-3xl font-black outline-none focus:border-emerald-400/60"
+              />
+
+              <div className="mt-4 grid grid-cols-4 gap-2">
+                {[500, 1000, 2500, 5000].map((n) => (
+                  <button key={n} onClick={() => setBet(n)} className="rounded-xl bg-white/5 p-3 font-bold hover:bg-emerald-400/20">
+                    {n}
+                  </button>
+                ))}
+              </div>
+
+              <button onClick={createRoom} className="mt-6 w-full rounded-2xl bg-gradient-to-r from-emerald-300 to-yellow-300 p-5 text-xl font-black text-black">
+                CREATE ROOM
+              </button>
+            </Panel>
+
+            <section className="rounded-[1.4rem] border border-emerald-400/20 bg-[radial-gradient(circle_at_center,#143529,#020403_72%)] p-6 text-center shadow-[0_0_100px_rgba(16,185,129,0.12)]">
+              <div className="text-sm font-black text-emerald-300">CURRENT POT</div>
+              <div className="mt-3 text-5xl font-black">{(bet * 2).toLocaleString()} TOSS</div>
+              <Coin face="HEADS" flipping={false} />
+              <div className="text-3xl font-black">CREATE OR JOIN A ROOM</div>
+            </section>
+
+            <Panel title="LIVE ROOMS">
+              {rooms.length === 0 ? (
+                <div className="rounded-xl bg-black/35 p-3 text-zinc-400">No live rooms</div>
+              ) : (
+                rooms.slice(0, 8).map((room) => (
+                  <div key={room.id} className="mb-3 rounded-xl bg-black/35 p-3">
+                    <b>{Number(room.wager * 2).toLocaleString()} TOSS POT</b>
+                    <div className="text-xs text-zinc-400">Creator: {room.creator}</div>
+                    <div className="text-xs text-zinc-400">Status: {room.status}</div>
+                    <button
+                      onClick={() => joinRoom(room.id)}
+                      className="mt-3 w-full rounded-lg bg-emerald-400 px-3 py-2 text-sm font-black text-black"
+                    >
+                      JOIN ROOM
+                    </button>
+                  </div>
+                ))
+              )}
+            </Panel>
+          </section>
+        )}
+
+        {tab === "match" && activeRoom && (
+          <section className="rounded-[1.4rem] border border-emerald-400/20 bg-[radial-gradient(circle_at_center,#143529,#020403_72%)] p-8 text-center">
+            <button onClick={() => {
+                    setActiveRoomId("");
+                    setTab("match");
+                  }} className="mb-6 rounded-xl border border-white/10 px-4 py-2 text-sm font-black text-zinc-300">
+              ← BACK TO LOBBY
+            </button>
+
+            <h2 className="text-4xl font-black">1V1 BATTLE ROOM</h2>
+            <p className="mt-2 text-zinc-400">Room: {activeRoom.id}</p>
+
+            <div className="mx-auto mt-8 grid max-w-5xl items-center gap-6 md:grid-cols-[1fr_160px_1fr]">
+              <VsPlayer
+                label="CREATOR"
+                name={activeRoom.creator}
+                choice={activeRoom.creatorChoice || "Waiting"}
+                assigned={activeRoom.creatorAssigned || "Pending"}
+                active={activeRoom.creator === me}
+                stats={getStats(activeRoom.creator)}
+              />
+
+              <div className="text-center">
+                <div className="vs-glow mx-auto flex h-32 w-32 items-center justify-center rounded-full border border-yellow-300/40 bg-yellow-300/10 text-5xl font-black text-yellow-300">
+                  VS
+                </div>
+                <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-black/40 p-4">
+                  <div className="text-xs font-black text-zinc-400">POT</div>
+                  <div className="text-2xl font-black text-emerald-300">
+                    {(activeRoom.wager * 2).toLocaleString()} TOSS
+                  </div>
+                </div>
+              </div>
+
+              <VsPlayer
+                label="JOINER"
+                name={activeRoom.joiner || "Waiting..."}
+                choice={activeRoom.joinerChoice || "Waiting"}
+                assigned={activeRoom.joinerAssigned || "Pending"}
+                active={activeRoom.joiner === me}
+                stats={getStats(activeRoom.joiner)}
+              />
+            </div>
+
+            <div className="mt-8 text-5xl font-black">
+              {(activeRoom.wager * 2).toLocaleString()} TOSS POT
+            </div>
+
+            {countdown && (
+              <div className="countdown-pop mb-6 text-8xl font-black text-yellow-300">
+                {countdown}
+              </div>
+            )}
+
+            <Coin face={activeRoom.result || activeRoom.creatorAssigned || "HEADS"} flipping={flipping} />
+
+            {activeRoom.status === "waiting" && (
+              <div>
+                <div className="text-2xl font-black text-yellow-300">WAITING FOR OPPONENT...</div>
+                <button
+                  onClick={async () => {
+                    await post({ type: "join", roomId: activeRoom.id, joiner: "BotPlayer" });
+                    await post({
+                      type: "choose",
+                      roomId: activeRoom.id,
+                      player: "joiner",
+                      choice: Math.random() < 0.5 ? "HEADS" : "TAILS"
+                    });
+                  }}
+                  className="mt-6 rounded-2xl bg-emerald-400 px-8 py-4 text-xl font-black text-black"
+                >
+                  DEV: ADD BOT OPPONENT
+                </button>
+              </div>
+            )}
+
+            {activeRoom.status === "picking" && (
+              <div>
+                <div className="mb-4 text-2xl font-black">PICK YOUR SIDE</div>
+                <div className="mx-auto grid max-w-md grid-cols-2 gap-4">
+                  <button onClick={() => choose("HEADS")} className="rounded-2xl bg-emerald-400 p-5 text-xl font-black text-black">
+                    HEADS
+                  </button>
+                  <button onClick={() => choose("TAILS")} className="rounded-2xl bg-yellow-300 p-5 text-xl font-black text-black">
+                    TAILS
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeRoom.status === "ready" && (
+              <button onClick={flipRoom} className="rounded-2xl bg-gradient-to-r from-emerald-300 to-yellow-300 px-16 py-5 text-2xl font-black text-black">
+                FLIP COIN
+              </button>
+            )}
+
+            {activeRoom.status === "finished" && (
+              <div className="mt-6">
+                <div className="text-5xl font-black text-yellow-300">{activeRoom.result} WINS</div>
+                <div className="mt-3 text-3xl font-black text-emerald-300">Winner: {activeRoom.winner}</div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {tab === "tournaments" && (
+          <section className="grid gap-6 md:grid-cols-3">
+            {[8, 16, 32].map((players) => (
+              <div key={players} className="rounded-[1.4rem] border border-yellow-500/30 bg-yellow-500/10 p-6">
+                <div className="text-4xl font-black text-yellow-300">{players} PLAYER</div>
+                <p className="mt-3 text-zinc-300">Fair bracket. No 3-way final.</p>
+                <button className="mt-6 w-full rounded-xl bg-yellow-300 p-4 font-black text-black">JOIN TOURNAMENT</button>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {tab === "leaderboard" && (
+          <Panel title="GLOBAL LEADERBOARD">
+            {players.length === 0 ? (
+              <div className="rounded-xl bg-black/35 p-4 text-zinc-400">No players yet</div>
+            ) : (
+              [...players]
+                .sort((a:any, b:any) => (b.totalWon || 0) - (a.totalWon || 0))
+                .map((p:any, i:number) => {
+                  const total = (p.wins || 0) + (p.losses || 0);
+                  const winRate = total ? Math.round((p.wins / total) * 100) : 0;
+
+                  return (
+                    <div key={p.name} className="mb-3 grid grid-cols-5 gap-3 rounded-xl bg-black/35 p-4">
+                      <b>#{i + 1} {p.name}</b>
+                      <span>{p.wins || 0} wins</span>
+                      <span>{p.losses || 0} losses</span>
+                      <span>{winRate}% WR</span>
+                      <b className="text-emerald-300">{(p.totalWon || 0).toLocaleString()} TOSS</b>
+                    </div>
+                  );
+                })
+            )}
+          </Panel>
+        )}
+
+        {tab === "matchmaking" && (
+          <Panel title="FAST MATCHMAKING">
+            <div className="mx-auto max-w-md rounded-2xl bg-black/40 p-6 text-center">
+              <div className="text-zinc-400">Searching for same bet</div>
+              <div className="mt-2 text-5xl font-black">{bet.toLocaleString()} TOSS</div>
+              <button className="mt-8 w-full rounded-2xl bg-emerald-400 p-5 text-xl font-black text-black">FIND MATCH</button>
+            </div>
+          </Panel>
+        )}
+      </div>
+
+      <div className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl border border-emerald-400/30 bg-[#050807]/95 shadow-[0_0_55px_rgba(16,185,129,0.28)] backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <div>
+            <div className="font-black text-emerald-300">COMMUNITY CHAT</div>
+            <div className="text-xs text-zinc-500">{messages.length} messages</div>
+          </div>
+          <button onClick={() => setChatOpen(!chatOpen)} className="rounded-lg border border-white/10 px-3 py-1 text-sm font-black text-zinc-300">
+            {chatOpen ? "−" : "+"}
+          </button>
+        </div>
+
+        {chatOpen && (
+          <>
+            <div className="h-64 overflow-y-auto p-4 text-sm">
+              {messages.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-zinc-500">No messages yet</div>
+              ) : (
+                messages.map((msg, i) => (
+                  <div key={i} className="mb-3 text-zinc-300">{msg}</div>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={sendChat} className="flex gap-2 border-t border-white/10 p-3">
+              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type message..." className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm outline-none" />
+              <button className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-black text-black">SEND</button>
+            </form>
+          </>
+        )}
+      </div>
+    </main>
+    </>
+  );
+}
+
+
+function VsPlayer({
+  label,
+  name,
+  choice,
+  assigned,
+  active,
+  stats,
+}: {
+  label: string;
+  name: string;
+  choice: string;
+  assigned: string;
+  active: boolean;
+  stats: any;
+}) {
+  const initial = name && name !== "Waiting..." ? name[0].toUpperCase() : "?";
+
+  return (
+    <div className={`rounded-[2rem] border p-6 text-center shadow-[0_0_70px_rgba(0,0,0,0.45)] ${
+      active
+        ? "border-emerald-400/60 bg-emerald-400/10"
+        : "border-white/10 bg-black/35"
+    }`}>
+      <div className="text-xs font-black tracking-[0.3em] text-zinc-500">{label}</div>
+
+      <div className="mx-auto mt-5 flex h-28 w-28 items-center justify-center rounded-full border-4 border-emerald-400/40 bg-[radial-gradient(circle_at_30%_20%,#34d399,#064e3b_70%)] text-5xl font-black text-white shadow-[0_0_45px_rgba(16,185,129,0.35)]">
+        {initial}
+      </div>
+
+      <div className="mt-5 text-3xl font-black">{name}</div>
+
+      <div className="mt-2 text-sm text-zinc-400">
+        ⭐ Level {Math.max(1, Math.floor((stats?.totalWon || 0) / 5000) + 1)}
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 text-center">
+        <div className="rounded-xl border border-emerald-400/20 bg-black/35 p-3">
+          <div className="text-xs text-zinc-500">WINS</div>
+          <div className="font-black text-emerald-300">{stats?.wins || 0}</div>
+        </div>
+
+        <div className="rounded-xl border border-yellow-400/20 bg-black/35 p-3">
+          <div className="text-xs text-zinc-500">WIN RATE</div>
+          <div className="font-black text-yellow-300">{stats?.winRate || 0}%</div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-orange-400/20 bg-black/35 p-3">
+        <div className="text-xs text-zinc-500">🔥 STREAK</div>
+        <div className="font-black text-orange-300">{stats?.streak || 0} WINS</div>
+      </div>
+    </div>
+  );
+}
+
+function Coin({ face, flipping }: { face: Side; flipping: boolean }) {
+  return (
+    <div className="coin-scene mx-auto my-10 flex h-[360px] w-[360px] items-center justify-center">
+      <div className={`relative flex h-[300px] w-[300px] items-center justify-center rounded-full border-[14px] border-yellow-700 bg-[radial-gradient(circle_at_30%_20%,#fff3a3,#d99a14_45%,#5a2b00_100%)] shadow-[0_0_120px_rgba(250,204,21,0.45),inset_0_0_45px_rgba(255,255,255,0.25),inset_0_-35px_40px_rgba(0,0,0,0.35)] ${flipping ? "coin-3d-flip" : ""}`}>
+        <div className="absolute inset-3 rounded-full border border-yellow-200/30" />
+        <div className="absolute inset-8 rounded-full border-2 border-yellow-950/35" />
+        <div className="text-center">
+        <div className="text-5xl font-black tracking-widest text-yellow-950">{face}</div>
+        <div className="mx-auto mt-5 h-1 w-44 rounded-full bg-yellow-950/50" />
+        <div className="mt-7 text-7xl text-yellow-950">{face === "HEADS" ? "♛" : "◆"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function NicknameModal({ onDone }: { onDone: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit() {
+    const clean = name.trim();
+
+    if (clean.length < 3) {
+      setError("Nickname must be 3+ characters");
+      return;
+    }
+
+    let playerId = localStorage.getItem("toss_player_id");
+
+    if (!playerId) {
+      playerId = crypto.randomUUID();
+      localStorage.setItem("toss_player_id", playerId);
+    }
+
+    const res = await fetch("/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "nickname", name: clean, playerId })
+    });
+
+    const data = await res.json();
+
+    if (!data.ok) {
+      setError(data.error || "Nickname unavailable");
+      return;
+    }
+
+    onDone(clean);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85">
+      <div className="w-full max-w-md rounded-3xl border border-emerald-400/30 bg-[#08120d] p-8 shadow-[0_0_80px_rgba(16,185,129,0.25)]">
+        <h2 className="text-3xl font-black">Choose Nickname</h2>
+        <p className="mt-2 text-zinc-400">This will be shown to other players.</p>
+
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            setError("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          className="mt-6 w-full rounded-2xl border border-white/10 bg-black p-4 text-xl text-white outline-none focus:border-emerald-400"
+          placeholder="Nickname"
+        />
+
+        {error && (
+          <div className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm font-bold text-red-300">
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={submit}
+          className="mt-6 w-full rounded-2xl bg-emerald-400 p-4 text-xl font-black text-black"
+        >
+          ENTER ARENA
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ title, value, sub }: { title: string; value: string; sub: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="text-xs font-black text-zinc-400">{title}</div>
+      <div className="mt-1 text-3xl font-black">{value}</div>
+      <div className="text-xs text-zinc-500">{sub}</div>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-[1.4rem] border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.025] p-5 shadow-[0_0_60px_rgba(0,0,0,0.5)]">
+      <h2 className="mb-5 text-xl font-black">{title}</h2>
+      {children}
+    </section>
+  );
+}

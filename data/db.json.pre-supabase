@@ -1,0 +1,458 @@
+{
+  "players": [
+    {
+      "playerId": "auto-demo",
+      "name": "demo",
+      "wins": 1,
+      "losses": 6,
+      "currentStreak": 0,
+      "bestStreak": 1,
+      "totalWon": 2000,
+      "xp": 75,
+      "level": 1
+    },
+    {
+      "playerId": "auto-BotPlayer",
+      "name": "BotPlayer",
+      "wins": 3,
+      "losses": 1,
+      "currentStreak": 3,
+      "bestStreak": 3,
+      "totalWon": 6000
+    },
+    {
+      "playerId": "auto-LuckyLarry",
+      "name": "LuckyLarry",
+      "wins": 1,
+      "losses": 0,
+      "currentStreak": 1,
+      "bestStreak": 1,
+      "totalWon": 2000,
+      "xp": 100,
+      "level": 1
+    },
+    {
+      "playerId": "auto-MoonTosser",
+      "name": "MoonTosser",
+      "wins": 1,
+      "losses": 0,
+      "currentStreak": 1,
+      "bestStreak": 1,
+      "totalWon": 2000,
+      "xp": 100,
+      "level": 1
+    },
+    {
+      "playerId": "auto-FlipKing",
+      "name": "FlipKing",
+      "wins": 1,
+      "losses": 0,
+      "currentStreak": 1,
+      "bestStreak": 1,
+      "totalWon": 2000,
+      "xp": 100,
+      "level": 1
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room-1781456570640",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "FlipKing",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "TAILS",
+      "winner": "demo"
+    },
+    {
+      "id": "room-1781456558190",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "CoinMaster",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "TAILS",
+      "winner": "CoinMaster"
+    },
+    {
+      "id": "room-1781456544867",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "LuckyLarry",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "HEADS",
+      "winner": "demo"
+    },
+    {
+      "id": "room-1781456294206",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "GoldFlip",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "HEADS",
+      "winner": "demo"
+    },
+    {
+      "id": "room-1781456122760",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "TossTitan",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "TAILS",
+      "winner": "demo"
+    },
+    {
+      "id": "room-1781456077494",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "MoonTosser",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "HEADS",
+      "winner": "MoonTosser"
+    },
+    {
+      "id": "room-1781455862537",
+      "wager": 2500,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "TossTitan",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "HEADS",
+      "winner": "TossTitan"
+    },
+    {
+      "id": "room-1781455604889",
+      "wager": 2500,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "CoinMaster",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "TAILS",
+      "winner": "demo"
+    },
+    {
+      "id": "room-1781455581933",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "demo": true,
+      "joiner": "TossTitan",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "TAILS",
+      "winner": "TossTitan"
+    },
+    {
+      "id": "room-1781453518544",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "FlipKing",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "HEADS",
+      "winner": "FlipKing"
+    },
+    {
+      "id": "room-1781453492812",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "MoonTosser",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "TAILS",
+      "winner": "MoonTosser"
+    },
+    {
+      "id": "room-1781453464406",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "LuckyLarry",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "HEADS",
+      "winner": "LuckyLarry"
+    },
+    {
+      "id": "room-1781453242220",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "BotPlayer",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "HEADS",
+      "winner": "BotPlayer"
+    },
+    {
+      "id": "room-1781452924211",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "BotPlayer",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "TAILS",
+      "winner": "BotPlayer"
+    },
+    {
+      "id": "room-1781452908323",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "BotPlayer",
+      "joinerChoice": "TAILS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "TAILS",
+      "winner": "BotPlayer"
+    },
+    {
+      "id": "room-1781452897094",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "BotPlayer",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "TAILS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "TAILS",
+      "winner": "demo"
+    },
+    {
+      "id": "room-1781452809209",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "BotPlayer",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "HEADS",
+      "joinerAssigned": "TAILS",
+      "result": "TAILS",
+      "winner": "BotPlayer"
+    },
+    {
+      "id": "room-1781452792533",
+      "wager": 1000,
+      "status": "finished",
+      "creator": "demo",
+      "joiner": "BotPlayer",
+      "joinerChoice": "HEADS",
+      "creatorChoice": "HEADS",
+      "creatorAssigned": "TAILS",
+      "joinerAssigned": "HEADS",
+      "result": "TAILS",
+      "winner": "demo"
+    }
+  ],
+  "messages": [],
+  "matches": [
+    {
+      "id": "match-1781456581422",
+      "winner": "demo",
+      "loser": "FlipKing",
+      "prize": 2000,
+      "result": "TAILS",
+      "demo": true,
+      "createdAt": "2026-06-14T17:03:01.422Z"
+    },
+    {
+      "id": "match-1781456569066",
+      "winner": "CoinMaster",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "TAILS",
+      "demo": true,
+      "createdAt": "2026-06-14T17:02:49.066Z"
+    },
+    {
+      "id": "match-1781456554587",
+      "winner": "demo",
+      "loser": "LuckyLarry",
+      "prize": 2000,
+      "result": "HEADS",
+      "demo": true,
+      "createdAt": "2026-06-14T17:02:34.587Z"
+    },
+    {
+      "id": "match-1781456305246",
+      "winner": "demo",
+      "loser": "GoldFlip",
+      "prize": 2000,
+      "result": "HEADS",
+      "demo": true,
+      "createdAt": "2026-06-14T16:58:25.246Z"
+    },
+    {
+      "id": "match-1781456133169",
+      "winner": "demo",
+      "loser": "TossTitan",
+      "prize": 2000,
+      "result": "TAILS",
+      "demo": true,
+      "createdAt": "2026-06-14T16:55:33.169Z"
+    },
+    {
+      "id": "match-1781456088829",
+      "winner": "MoonTosser",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "HEADS",
+      "demo": true,
+      "createdAt": "2026-06-14T16:54:48.829Z"
+    },
+    {
+      "id": "match-1781455873455",
+      "winner": "TossTitan",
+      "loser": "demo",
+      "prize": 5000,
+      "result": "HEADS",
+      "demo": true,
+      "createdAt": "2026-06-14T16:51:13.455Z"
+    },
+    {
+      "id": "match-1781455616712",
+      "winner": "demo",
+      "loser": "CoinMaster",
+      "prize": 5000,
+      "result": "TAILS",
+      "demo": true,
+      "createdAt": "2026-06-14T16:46:56.712Z"
+    },
+    {
+      "id": "match-1781455594628",
+      "winner": "TossTitan",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "TAILS",
+      "demo": true,
+      "createdAt": "2026-06-14T16:46:34.628Z"
+    },
+    {
+      "id": "match-1781453528590",
+      "winner": "FlipKing",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "HEADS",
+      "createdAt": "2026-06-14T16:12:08.590Z"
+    },
+    {
+      "id": "match-1781453506753",
+      "winner": "MoonTosser",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "TAILS",
+      "createdAt": "2026-06-14T16:11:46.753Z"
+    },
+    {
+      "id": "match-1781453476924",
+      "winner": "LuckyLarry",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "HEADS",
+      "createdAt": "2026-06-14T16:11:16.924Z"
+    },
+    {
+      "id": "match-1781453250330",
+      "winner": "BotPlayer",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "HEADS",
+      "createdAt": "2026-06-14T16:07:30.330Z"
+    },
+    {
+      "id": "match-1781452929958",
+      "winner": "BotPlayer",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "TAILS",
+      "createdAt": "2026-06-14T16:02:09.958Z"
+    },
+    {
+      "id": "match-1781452914725",
+      "winner": "BotPlayer",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "TAILS",
+      "createdAt": "2026-06-14T16:01:54.725Z"
+    },
+    {
+      "id": "match-1781452902172",
+      "winner": "demo",
+      "loser": "BotPlayer",
+      "prize": 2000,
+      "result": "TAILS",
+      "createdAt": "2026-06-14T16:01:42.172Z"
+    },
+    {
+      "id": "match-1781452817518",
+      "winner": "BotPlayer",
+      "loser": "demo",
+      "prize": 2000,
+      "result": "TAILS",
+      "createdAt": "2026-06-14T16:00:17.518Z"
+    },
+    {
+      "id": "match-1781452799887",
+      "winner": "demo",
+      "loser": "BotPlayer",
+      "prize": 2000,
+      "result": "TAILS",
+      "createdAt": "2026-06-14T15:59:59.887Z"
+    }
+  ]
+}

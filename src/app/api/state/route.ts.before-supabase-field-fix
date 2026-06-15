@@ -1,0 +1,515 @@
+import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import { supabase } from "@/lib/supabase";
+
+type Side = "HEADS" | "TAILS";
+
+type Player = {
+  playerId: string;
+  name: string;
+  wins: number;
+  losses: number;
+  currentStreak: number;
+  bestStreak: number;
+  totalWon: number;
+  achievements?: string[];
+  xp?: number;
+  level?: number;
+  gamesPlayed?: number;
+  winRate?: number;
+  leaderboardScore?: number;
+  lastPlayedAt?: string;
+  jackpotEligible?: boolean;
+};
+
+type Room = {
+  id: string;
+  wager: number;
+  status: "waiting" | "picking" | "ready" | "finished";
+  creator: string;
+  joiner?: string;
+  creatorChoice?: Side;
+  joinerChoice?: Side;
+  creatorAssigned?: Side;
+  joinerAssigned?: Side;
+  winner?: string;
+  result?: Side;
+  demo?: boolean;
+};
+
+type Economy = {
+  jackpotPool: number;
+  devFees: number;
+  lastJackpotAt?: string;
+  nextJackpotAt?: string;
+};
+
+type DB = {
+  players: Player[];
+  rooms: Room[];
+  messages: any[];
+  matches: any[];
+  economy?: Economy;
+};
+
+const dbPath = path.join(process.cwd(), "data", "db.json");
+
+function readDB(): DB {
+  if (!fs.existsSync(dbPath)) {
+    fs.writeFileSync(dbPath, JSON.stringify({ players: [], rooms: [], messages: [], matches: [] }, null, 2));
+  }
+  const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+  db.economy ||= {
+    jackpotPool: 0,
+    devFees: 0,
+    nextJackpotAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+  };
+  return db;
+}
+
+function writeDB(db: DB) {
+  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+}
+
+function assignSides(room: Room) {
+  if (!room.creatorChoice || !room.joinerChoice) return;
+
+  if (room.creatorChoice !== room.joinerChoice) {
+    room.creatorAssigned = room.creatorChoice;
+    room.joinerAssigned = room.joinerChoice;
+  } else {
+    const creatorGetsHeads = Math.random() < 0.5;
+    room.creatorAssigned = creatorGetsHeads ? "HEADS" : "TAILS";
+    room.joinerAssigned = creatorGetsHeads ? "TAILS" : "HEADS";
+  }
+
+  room.status = "ready";
+}
+
+function applyXp(player: Player, amount: number) {
+  player.xp = Math.max(0, Number(player.xp || 0) + amount);
+  player.level = Math.max(1, Math.floor(Number(player.xp || 0) / 500) + 1);
+  return player;
+}
+
+function updatePlayerMeta(player: Player) {
+  const wins = player.wins || 0;
+  const losses = player.losses || 0;
+  const games = wins + losses;
+  const xp = player.xp || 0;
+  const level = player.level || 1;
+  const currentStreak = player.currentStreak || 0;
+  const bestStreak = player.bestStreak || 0;
+
+  player.gamesPlayed = games;
+  player.winRate = games ? Math.round((wins / games) * 100) : 0;
+  player.leaderboardScore =
+    wins * 100 +
+    currentStreak * 50 +
+    bestStreak * 25 +
+    xp;
+
+  const last = player.lastPlayedAt ? new Date(player.lastPlayedAt).getTime() : 0;
+  const playedWithin24h = last > Date.now() - 24 * 60 * 60 * 1000;
+
+  player.jackpotEligible =
+    wins >= 10 &&
+    level >= 5 &&
+    playedWithin24h;
+
+  return player;
+}
+
+function rankPlayers(players: Player[]) {
+  return [...players]
+    .map((p) => updatePlayerMeta(p))
+    .sort((a, b) => (b.leaderboardScore || 0) - (a.leaderboardScore || 0));
+}
+
+function getPlayer(db: DB, name: string) {
+  let player = db.players.find((p) => p.name === name);
+
+  if (!player && name && name !== "Guest") {
+    player = {
+      playerId: `auto-${name}`,
+      name,
+      wins: 0,
+      losses: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      totalWon: 0,
+      achievements: [],
+      xp: 0,
+      level: 1,
+      gamesPlayed: 0,
+      winRate: 0,
+      leaderboardScore: 0,
+      jackpotEligible: false
+    };
+    db.players.push(player);
+  }
+
+  return player;
+}
+
+async function syncPlayersToSupabase(db: DB) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) return;
+
+  for (const p of db.players) {
+    const { error } = await supabase.from("players").upsert({
+      player_id: p.playerId,
+      name: p.name,
+      wins: p.wins || 0,
+      losses: p.losses || 0,
+      current_streak: p.currentStreak || 0,
+      best_streak: p.bestStreak || 0,
+      total_won: p.totalWon || 0,
+      xp: p.xp || 0,
+      level: p.level || 1,
+    gamesPlayed: p.games_played || 0,
+    winRate: p.win_rate || 0,
+    leaderboardScore: p.leaderboard_score || 0,
+    lastPlayedAt: p.last_played_at || undefined,
+    jackpotEligible: Boolean(p.jackpot_eligible),
+      achievements: p.achievements || [],
+      games_played: p.gamesPlayed || 0,
+      win_rate: p.winRate || 0,
+      leaderboard_score: p.leaderboardScore || 0,
+      last_played_at: p.lastPlayedAt || null,
+      jackpot_eligible: Boolean(p.jackpotEligible)
+    }, { onConflict: "player_id" });
+
+    if (error) {
+      console.error("SUPABASE PLAYER UPSERT ERROR", error);
+    }
+  }
+}
+
+async function loadSupabasePlayers() {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) return [];
+
+  const { data, error } = await supabase
+    .from("players")
+    .select("*")
+    .order("total_won", { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((p:any) => ({
+    playerId: p.player_id,
+    name: p.name,
+    wins: p.wins || 0,
+    losses: p.losses || 0,
+    currentStreak: p.current_streak || 0,
+    bestStreak: p.best_streak || 0,
+    totalWon: Number(p.total_won || 0),
+    achievements: p.achievements || [],
+    xp: Number(p.xp || 0),
+    level: Number(p.level || 1),
+    gamesPlayed: p.games_played || 0,
+    winRate: p.win_rate || 0,
+    leaderboardScore: p.leaderboard_score || 0,
+    lastPlayedAt: p.last_played_at || undefined,
+    jackpotEligible: Boolean(p.jackpot_eligible)
+  }));
+}
+
+export async function GET() {
+  const db = readDB();
+
+  const supabasePlayers = await loadSupabasePlayers();
+  if (supabasePlayers.length > 0) {
+    db.players = supabasePlayers;
+  } else {
+    await syncPlayersToSupabase(db);
+  }
+
+  db.players = db.players.map((p) => updatePlayerMeta(p));
+
+  const leaderboard = rankPlayers(db.players).slice(0, 20);
+
+  const jackpotContenders = leaderboard
+    .filter((p) => p.jackpotEligible)
+    .slice(0, 2);
+
+  return NextResponse.json({
+    ...db,
+    leaderboard,
+    jackpot: {
+      pool: db.economy?.jackpotPool || 0,
+      devFees: db.economy?.devFees || 0,
+      nextJackpotAt: db.economy?.nextJackpotAt,
+      contenders: jackpotContenders
+    }
+  });
+}
+
+export async function POST(req: Request) {
+  const db = readDB();
+
+  const supabasePlayers = await loadSupabasePlayers();
+  if (supabasePlayers.length > 0) {
+    db.players = supabasePlayers;
+  }
+
+  const body = await req.json();
+
+  if (body.type === "nickname") {
+    const name = String(body.name || "").trim();
+    const playerId = String(body.playerId || "").trim();
+
+    if (!playerId) return NextResponse.json({ ok: false, error: "Missing player ID" });
+    if (name.length < 3) return NextResponse.json({ ok: false, error: "Nickname must be 3+ characters" });
+
+    const taken = db.players.find(
+      (p) => p.name.toLowerCase() === name.toLowerCase() && p.playerId !== playerId
+    );
+
+    if (taken) return NextResponse.json({ ok: false, error: "Nickname already taken" });
+
+    let player = db.players.find((p) => p.playerId === playerId);
+
+    if (player) {
+      player.name = name;
+    } else {
+      db.players.push({
+        playerId,
+        name,
+        wins: 0,
+        losses: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        totalWon: 0
+      });
+    }
+
+    writeDB(db);
+    await syncPlayersToSupabase(db);
+    return NextResponse.json({ ok: true, name, ...db });
+  }
+
+  if (body.type === "room") {
+    const room: Room = {
+      id: `room-${Date.now()}`,
+      wager: Number(body.wager),
+      status: "waiting",
+      creator: body.creator || "Guest",
+      demo: Boolean(body.demo)
+    };
+
+    db.rooms.unshift(room);
+    writeDB(db);
+    await syncPlayersToSupabase(db);
+    return NextResponse.json({ ...db, activeRoom: room });
+  }
+
+  if (body.type === "join") {
+    const room = db.rooms.find((r) => r.id === body.roomId);
+    if (room && !room.joiner) {
+      room.joiner = body.joiner || "Guest";
+      room.status = "picking";
+    }
+
+    db.players = db.players.map((p) => updatePlayerMeta(p));
+    writeDB(db);
+    await syncPlayersToSupabase(db);
+
+    const leaderboard = rankPlayers(db.players).slice(0, 20);
+    const jackpotContenders = leaderboard.filter((p) => p.jackpotEligible).slice(0, 2);
+
+    return NextResponse.json({
+      ...db,
+      leaderboard,
+      jackpot: {
+        pool: db.economy?.jackpotPool || 0,
+        devFees: db.economy?.devFees || 0,
+        nextJackpotAt: db.economy?.nextJackpotAt,
+        contenders: jackpotContenders,
+        devWallet: process.env.NEXT_PUBLIC_DEV_WALLET || "",
+        jackpotWallet: process.env.NEXT_PUBLIC_JACKPOT_WALLET || "",
+        feeModel: {
+          winnerPercent: 93,
+          devPercent: 2,
+          jackpotPercent: 5
+        }
+      }
+    });
+  }
+
+  if (body.type === "choose") {
+    const room = db.rooms.find((r) => r.id === body.roomId);
+
+    if (room) {
+      if (body.player === "creator") room.creatorChoice = body.choice;
+      if (body.player === "joiner") room.joinerChoice = body.choice;
+      assignSides(room);
+    }
+
+    db.players = db.players.map((p) => updatePlayerMeta(p));
+    writeDB(db);
+    await syncPlayersToSupabase(db);
+
+    const leaderboard = rankPlayers(db.players).slice(0, 20);
+    const jackpotContenders = leaderboard.filter((p) => p.jackpotEligible).slice(0, 2);
+
+    return NextResponse.json({
+      ...db,
+      leaderboard,
+      jackpot: {
+        pool: db.economy?.jackpotPool || 0,
+        devFees: db.economy?.devFees || 0,
+        nextJackpotAt: db.economy?.nextJackpotAt,
+        contenders: jackpotContenders,
+        devWallet: process.env.NEXT_PUBLIC_DEV_WALLET || "",
+        jackpotWallet: process.env.NEXT_PUBLIC_JACKPOT_WALLET || "",
+        feeModel: {
+          winnerPercent: 93,
+          devPercent: 2,
+          jackpotPercent: 5
+        }
+      }
+    });
+  }
+
+  if (body.type === "flip") {
+    const room = db.rooms.find((r) => r.id === body.roomId);
+
+    if (room && room.status === "ready") {
+      const result: Side = crypto.randomInt(0, 2) === 0 ? "HEADS" : "TAILS";
+      room.result = result;
+      room.winner = room.creatorAssigned === result ? room.creator : room.joiner || "Joiner";
+      room.status = "finished";
+
+      const loser = room.winner === room.creator ? room.joiner : room.creator;
+      const grossPot = room.wager * 2;
+      const devFee = Math.floor(grossPot * 0.02);
+      const jackpotFee = Math.floor(grossPot * 0.05);
+      const totalFee = devFee + jackpotFee;
+      const prize = grossPot - totalFee;
+
+      db.economy ||= {
+        jackpotPool: 0,
+        devFees: 0,
+        nextJackpotAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      };
+
+      db.economy.devFees += devFee;
+      db.economy.jackpotPool += jackpotFee;
+
+      const winnerProfile = getPlayer(db, room.winner);
+      if (winnerProfile) {
+        winnerProfile.wins += 1;
+        winnerProfile.currentStreak += 1;
+        winnerProfile.bestStreak = Math.max(winnerProfile.bestStreak, winnerProfile.currentStreak);
+        winnerProfile.totalWon += prize;
+        winnerProfile.lastPlayedAt = new Date().toISOString();
+
+      winnerProfile.achievements ||= [];
+
+      if (winnerProfile.wins >= 1 && !winnerProfile.achievements.includes("FIRST WIN")) {
+        winnerProfile.achievements.push("FIRST WIN");
+      }
+
+      if (winnerProfile.wins >= 5 && !winnerProfile.achievements.includes("5 WINS")) {
+        winnerProfile.achievements.push("5 WINS");
+      }
+
+      if (winnerProfile.currentStreak >= 3 && !winnerProfile.achievements.includes("HOT STREAK")) {
+        winnerProfile.achievements.push("HOT STREAK");
+      }
+        applyXp(winnerProfile, 100);
+        updatePlayerMeta(winnerProfile);
+      }
+
+      if (loser) {
+        const loserProfile = getPlayer(db, loser);
+        if (loserProfile) {
+          loserProfile.losses += 1;
+          loserProfile.currentStreak = 0;
+          loserProfile.lastPlayedAt = new Date().toISOString();
+          applyXp(loserProfile, 25);
+          updatePlayerMeta(loserProfile);
+        }
+      }
+
+      db.matches.unshift({
+        id: `match-${Date.now()}`,
+        winner: room.winner,
+        loser,
+        prize,
+        grossPot,
+        devFee,
+        jackpotFee,
+        totalFee,
+        result,
+        demo: Boolean(room.demo),
+        createdAt: new Date().toISOString()
+      });
+
+      await syncPlayersToSupabase(db);
+    }
+
+    db.players = db.players.map((p) => updatePlayerMeta(p));
+    writeDB(db);
+    await syncPlayersToSupabase(db);
+
+    const leaderboard = rankPlayers(db.players).slice(0, 20);
+    const jackpotContenders = leaderboard.filter((p) => p.jackpotEligible).slice(0, 2);
+
+    return NextResponse.json({
+      ...db,
+      leaderboard,
+      jackpot: {
+        pool: db.economy?.jackpotPool || 0,
+        devFees: db.economy?.devFees || 0,
+        nextJackpotAt: db.economy?.nextJackpotAt,
+        contenders: jackpotContenders,
+        devWallet: process.env.NEXT_PUBLIC_DEV_WALLET || "",
+        jackpotWallet: process.env.NEXT_PUBLIC_JACKPOT_WALLET || "",
+        feeModel: {
+          winnerPercent: 93,
+          devPercent: 2,
+          jackpotPercent: 5
+        }
+      }
+    });
+  }
+
+  if (body.type === "chat") {
+    db.messages.push({
+      id: Date.now(),
+      wallet: body.wallet || "Guest",
+      message: body.message || "",
+      createdAt: new Date().toISOString()
+    });
+
+    db.players = db.players.map((p) => updatePlayerMeta(p));
+    writeDB(db);
+    await syncPlayersToSupabase(db);
+
+    const leaderboard = rankPlayers(db.players).slice(0, 20);
+    const jackpotContenders = leaderboard.filter((p) => p.jackpotEligible).slice(0, 2);
+
+    return NextResponse.json({
+      ...db,
+      leaderboard,
+      jackpot: {
+        pool: db.economy?.jackpotPool || 0,
+        devFees: db.economy?.devFees || 0,
+        nextJackpotAt: db.economy?.nextJackpotAt,
+        contenders: jackpotContenders,
+        devWallet: process.env.NEXT_PUBLIC_DEV_WALLET || "",
+        jackpotWallet: process.env.NEXT_PUBLIC_JACKPOT_WALLET || "",
+        feeModel: {
+          winnerPercent: 93,
+          devPercent: 2,
+          jackpotPercent: 5
+        }
+      }
+    });
+  }
+
+  return NextResponse.json(db);
+}
